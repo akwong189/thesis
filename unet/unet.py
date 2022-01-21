@@ -1,3 +1,5 @@
+# based on code from https://github.com/zhixuhao/unet/blob/master/model.py
+
 # import cv2
 import tensorflow as tf
 # import matplotlib as mpl
