@@ -56,7 +56,7 @@ BATCH_SIZE = 32
 def preprocess(image_path, depth_path):
     image = tf.io.read_file(image_path)
     image = tf.image.decode_jpeg(image, channels=3)
-    image = tf.image.resize(image, [240,320])
+    # image = tf.image.resize(image, [240,320])
     # image = tf.image.convert_image_dtype(image, tf.float16)
 
     depth = tf.io.read_file(depth_path)
@@ -170,8 +170,44 @@ def get_model(input_size = (240, 320, 3)):
 
     return model
 
+def model_2():
+    def upsampling(input_tensor, n_filters, concat_layer):
+        '''
+        Constitutes the block of Decoder
+        '''
+        # Bilinear 2x upsampling layer
+        x = tf.keras.layers.UpSampling2D(size=(2,2), interpolation='bilinear')(input_tensor)
+        # concatenation with encoder block 
+        x = tf.keras.layers.concatenate([x,concat_layer])
+        # decreasing the depth filters by half
+        x = tf.keras.layers.Conv2D(filters=n_filters, kernel_size=(3,3), padding='same')(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Conv2D(filters=n_filters, kernel_size=(3,3), padding='same')(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        return x
+
+    pools = ['pool3_pool', 'pool2_pool', 'pool1', 'conv1/relu']
+
+    encoder = tf.keras.applications.densenet.DenseNet121(include_top=False, weights='imagenet', input_shape=(480,640,3))
+    x = encoder.output
+    # decoder blocks linked with corresponding encoder blocks
+    bneck = tf.keras.layers.Conv2D(filters=1024, kernel_size=(1,1), padding='same')(x)
+    x = tf.keras.layers.LeakyReLU(alpha=0.2)(bneck)
+    x = upsampling(bneck, 1024, encoder.get_layer(pools[0]).output)
+    x = tf.keras.layers.LeakyReLU(alpha=0.2)(x)
+    x = upsampling(x, 416, encoder.get_layer(pools[1]).output)
+    x = tf.keras.layers.LeakyReLU(alpha=0.2)(x)
+    x = upsampling(x, 208, encoder.get_layer(pools[2]).output)
+    x = tf.keras.layers.LeakyReLU(alpha=0.2)(x)
+    x = upsampling(x, 104, encoder.get_layer(pools[3]).output)
+    x = tf.keras.layers.Conv2D(filters=1, kernel_size=(3,3), padding='same')(x)
+
+    model = tf.keras.Model(inputs=encoder.input, outputs=x)
+
+    return model
+
 model = get_model()
-model.summary()
+# model.summary()
 
 base_learning_rate = 0.0001
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate),
