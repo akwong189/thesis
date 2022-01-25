@@ -9,6 +9,29 @@ import pandas as pd
 # import imageio
 from sklearn.model_selection import train_test_split
 
+# loss function from densedepth https://github.com/ialhashim/DenseDepth
+import tensorflow.keras.backend as K
+
+def depth_loss_function(y_true, y_pred, theta=0.1, maxDepthVal=1000.0/10.0):
+
+    # Point-wise depth
+    l_depth = K.mean(K.abs(y_pred - y_true), axis=-1)
+
+    # Edges
+    dy_true, dx_true = tf.image.image_gradients(y_true)
+    dy_pred, dx_pred = tf.image.image_gradients(y_pred)
+    l_edges = K.mean(K.abs(dy_pred - dy_true) + K.abs(dx_pred - dx_true), axis=-1)
+
+    # Structural similarity (SSIM) index
+    l_ssim = K.clip((1 - tf.image.ssim(y_true, y_pred, maxDepthVal)) * 0.5, 0, 1)
+
+    # Weights
+    w1 = 1.0
+    w2 = 1.0
+    w3 = theta
+
+    return (w1 * l_ssim) + (w2 * K.mean(l_edges)) + (w3 * K.mean(l_depth))
+
 PATH="/data3/awong"
 
 train = pd.read_csv(f"{PATH}/data/nyu2_train.csv", header=None, names=["Image", "Depth"])
@@ -37,7 +60,7 @@ def preprocess(image_path, depth_path):
     # image = tf.image.convert_image_dtype(image, tf.float16)
 
     depth = tf.io.read_file(depth_path)
-    depth = tf.image.decode_png(depth, channels=3)
+    depth = tf.image.decode_png(depth, channels=1)
     depth = tf.image.resize(depth, [240,320])
     # depth = tf.image.convert_image_dtype(depth, tf.float16)
 
@@ -139,8 +162,9 @@ def get_model(input_size = (240, 320, 3)):
 
     conv9 = tf.keras.layers.Conv2D(64, 3, activation="relu", padding="same")(cat4)
     conv9 = tf.keras.layers.Conv2D(64, 3, activation="relu", padding="same")(conv9)
+    conv9 = tf.keras.layers.Conv2D(2, 3, activation="relu", padding="same")(conv9)
 
-    conv10 = tf.keras.layers.Conv2D(3, 3, activation="softmax", padding="same")(conv9)
+    conv10 = tf.keras.layers.Conv2D(1, 1, activation="sigmoid")(conv9)
 
     model = tf.keras.Model(input, outputs = conv10)
 
@@ -151,7 +175,7 @@ model.summary()
 
 base_learning_rate = 0.0001
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate),
-              loss=tf.keras.losses.MeanAbsoluteError(),
+              loss=depth_loss_function,
               metrics=['accuracy'])
 
 # early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_label_loss', mode='min', patience=10, restore_best_weights=True)
