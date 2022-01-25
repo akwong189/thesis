@@ -55,14 +55,13 @@ BATCH_SIZE = 32
 @tf.function
 def preprocess(image_path, depth_path):
     image = tf.io.read_file(image_path)
-    image = tf.image.decode_jpeg(image, channels=3)
+    image = tf.io.decode_image(image, channels=3, expand_animations=False)
     # image = tf.image.resize(image, [240,320])
-    # image = tf.image.convert_image_dtype(image, tf.float16)
 
     depth = tf.io.read_file(depth_path)
-    depth = tf.image.decode_png(depth, channels=1)
+    depth = tf.io.decode_image(depth, channels=1, expand_animations=False)
     depth = tf.image.resize(depth, [240,320])
-    # depth = tf.image.convert_image_dtype(depth, tf.float16)
+    # depth = tf.squeeze(depth)
 
     return image, depth
 
@@ -209,7 +208,7 @@ def model_2():
 model = get_model()
 # model.summary()
 
-base_learning_rate = 0.0001
+base_learning_rate = 0.001
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate),
               loss=depth_loss_function,
               metrics=['accuracy'])
@@ -224,4 +223,4 @@ model.fit(
 )
 
 model.evaluate(testloader)
-model.save('unet-mae.h5')
+model.save('unet-densedepth-1.h5')
