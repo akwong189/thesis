@@ -50,18 +50,20 @@ test_depth_path = f"{PATH}/" + test.Depth
 
 # auto load into the GPU for preprocessing (faster than previous method and allows for larger images)
 AUTO = tf.data.experimental.AUTOTUNE
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 
 @tf.function
 def preprocess(image_path, depth_path):
     image = tf.io.read_file(image_path)
     image = tf.io.decode_image(image, channels=3, expand_animations=False)
-    # image = tf.image.resize(image, [240,320])
+    image = tf.cast(image, tf.float32)
+    image = image / 255.0
 
     depth = tf.io.read_file(depth_path)
     depth = tf.io.decode_image(depth, channels=1, expand_animations=False)
     depth = tf.image.resize(depth, [240,320])
-    # depth = tf.squeeze(depth)
+    depth = tf.cast(depth, tf.float32)
+    depth = depth / 255.0
 
     return image, depth
 
@@ -202,16 +204,21 @@ def model_2():
     x = tf.keras.layers.Conv2D(filters=1, kernel_size=(3,3), padding='same')(x)
 
     model = tf.keras.Model(inputs=encoder.input, outputs=x)
+    model.summary()
 
     return model
 
-model = get_model()
+def accuracy_function(y_true, y_pred):
+    return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
+
+# model = get_model()
+model = model_2()
 # model.summary()
 
-base_learning_rate = 0.001
+base_learning_rate = 0.0001
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate),
               loss=depth_loss_function,
-              metrics=['accuracy'])
+              metrics=[accuracy_function])
 
 # early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_label_loss', mode='min', patience=10, restore_best_weights=True)
 
